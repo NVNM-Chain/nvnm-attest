@@ -14,7 +14,7 @@ Put data on the NVNM Chain testnet by talking to Claude. No coding needed.
 | Where | Good for | How |
 |---|---|---|
 | Claude Code (terminal, desktop app's Code tab, IDE) | Bots that run for hours or days | `git clone https://github.com/NVNM-Chain/nvnm-attest ~/.claude/skills/nvnm-attest` (or into a project's `.claude/skills/`) |
-| Claude.ai | One-off attestations | Download the [kit zip](https://github.com/NVNM-Chain/nvnm-attest/archive/refs/tags/v0.3.1.zip) and upload it in claude.ai's skill settings |
+| Claude.ai | One-off attestations | Download the [kit zip](https://github.com/NVNM-Chain/nvnm-attest/archive/refs/heads/main.zip) and upload it in claude.ai's skill settings |
 
 A bot started in a claude.ai chat stops when the chat does. For a bot that keeps running, use Claude Code.
 
