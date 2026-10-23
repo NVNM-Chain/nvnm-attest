@@ -1,0 +1,3 @@
+wallets/*.json
+data/
+__pycache__/
