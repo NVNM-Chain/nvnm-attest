@@ -11,7 +11,7 @@ Source: NVNM-Chain/nvnmchain-docs, `content/docs/modules/anchoring-module.mdx` a
 | RPC / WS | `https://rpc.nvnm.testnet.nvnmchain.io` / `wss://rpc.nvnm.testnet.nvnmchain.io` |
 | Explorer (anchoring view) | `https://explorer.nvnm.testnet.nvnmchain.io` |
 | Faucet | `https://faucet.nvnm.testnet.nvnmchain.io` (web form) |
-| Faucet API | `POST /api/faucet`, body `{"address": "0x..."}` → `{txHash, amount}` (100 nUSD). Limits: 1 request per address per 24h, 1 per IP per hour. Errors: 400 bad address (bech32 `nvnm1...` is rejected), 429 limit with `Retry-After`, 500 faucet misconfigured or tx failed, 503 faucet empty or transfer pending. Source: `NVNM-Chain/nvnm-layer1-sovereign-faucet` README (checked 14 Oct 2026) |
+| Faucet API | `POST /api/faucet`, body `{"address": "0x..."}` → `{txHash, amount}` (100 nUSD). Limits: 1 request per address per 24h, 1 per IP per hour. Errors: 400 bad address (bech32 `nvnm1...` is rejected), 429 limit with `Retry-After`, 500 faucet misconfigured or tx failed, 503 faucet empty or transfer pending. |
 | Faucet health | `curl -s https://faucet.nvnm.testnet.nvnmchain.io/api/faucet/balance` → `{balance, balanceRaw, healthy}` |
 
 ## Fees
