@@ -280,8 +280,8 @@ def send(w3, acct, fn, gas_fallback=8_000_000, wait=True, guard=None):
 
 
 # --- One runner per wallet ---------------------------------------------------
-# Two bots on one wallet anchor the same data twice and race for nonces. That happened on 14 Oct 2026,
-# so a bot claims its wallet before it starts, and send() checks the nonce before every transaction.
+# Two bots on one wallet anchor the same data twice and race for nonces, so a bot claims its wallet
+# before it starts, and send() checks the nonce before every transaction.
 ADD_RECORD_TOPIC = "0x1a3295fa8cc0e28c95d21912c9e6958f3bc740231781f7640ad885c972a352fd"
 RECENT_SECONDS = 600
 
