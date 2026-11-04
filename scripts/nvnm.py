@@ -28,7 +28,7 @@ FAUCET_API = os.getenv("NVNM_FAUCET_API", f"{FAUCET}/api/faucet")  # POST {"addr
 
 ANCHORING = Web3.to_checksum_address("0x0000000000000000000000000000000000000A00")
 NUSD = Web3.to_checksum_address("0x20C0000000000000000000000000000000000000")  # fee token, 6 decimals
-KIT_VERSION = "nvnm-attest/0.3.1"
+KIT_VERSION = "nvnm-attest/0.3.2"
 
 KIT_DIR = Path(__file__).resolve().parent.parent
 WALLET_DIR = Path(os.getenv("NVNM_WALLET_DIR", KIT_DIR / "wallets"))
@@ -111,6 +111,21 @@ ANCHORING_ABI = [
                 {"name": "index", "type": "uint64", "indexed": False},
                 {"name": "checksum", "type": "string", "indexed": False}]},
 ]
+
+
+def _bytes_for_strings(t):
+    """`t` with every string read as bytes. Both share one ABI encoding, and bytes can't fail to decode."""
+    if t["type"] == "string":
+        return dict(t, type="bytes")
+    if "components" in t:
+        return dict(t, components=[_bytes_for_strings(c) for c in t["components"]])
+    return t
+
+
+# Reads decode strings as bytes first. The contract accepts any bytes in a record, binary data included,
+# and web3's strict UTF-8 decode crashed verify.py on such records.
+_READ_ABI = [dict(f, outputs=[_bytes_for_strings(o) for o in f["outputs"]])
+             for f in ANCHORING_ABI if f.get("stateMutability") == "view"]
 
 ERC20_ABI = [
     {"type": "function", "name": "balanceOf", "stateMutability": "view",
@@ -380,22 +395,30 @@ def add_record(w3, acct, registry_id, checksum, metadata: dict, uri="", status="
             "block": receipt.blockNumber}
 
 
+def _reader(w3):
+    return w3.eth.contract(address=ANCHORING, abi=_READ_ABI)
+
+
+def _as_dict(struct, row):
+    """Name a struct's fields. Invalid UTF-8 becomes U+FFFD instead of raising."""
+    return {c["name"]: v.decode("utf-8", errors="replace") if isinstance(v, bytes) else v
+            for c, v in zip(struct["components"], row)}
+
+
 def find_records(w3, registry_id=0, checksum="", limit=50):
     try:
-        recs, _page = anchoring(w3).functions.records(
+        recs, _page = _reader(w3).functions.records(
             int(registry_id), checksum, 0, 0, (b"", 0, limit, False, True)).call()
     except Exception as e:  # the contract reverts with "record does not exist" when nothing matches
         if "does not exist" in str(e):
             return []
         raise
-    fields = [c["name"] for c in _RECORD["components"]]
-    return [dict(zip(fields, r)) for r in recs]
+    return [_as_dict(_RECORD, r) for r in recs]
 
 
 def list_registries(w3, registry_id=0, limit=50):
-    regs, page = anchoring(w3).functions.registries(int(registry_id), (b"", 0, limit, True, True)).call()
-    fields = [c["name"] for c in _REGISTRY["components"]]
-    return [dict(zip(fields, r)) for r in regs], page[1]
+    regs, page = _reader(w3).functions.registries(int(registry_id), (b"", 0, limit, True, True)).call()
+    return [_as_dict(_REGISTRY, r) for r in regs], page[1]
 
 
 def log_line(registry_id, entry: dict):

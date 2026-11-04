@@ -29,4 +29,7 @@ if not recs:
 print(f"VERIFIED: sha256 {checksum} is anchored in registry {a.registry}")
 for r in recs:
     print(f"  record {r['recordId']} v{r['index']}  at {r['timestamp']}  status={r['status']}  latest={r['isLatest']}")
-    print(f"  metadata: {r['metadata']}")
+    meta = r["metadata"]
+    if not meta.isprintable():  # a record can hold any bytes: keep control characters off the terminal
+        meta = ascii(meta)[:300]
+    print(f"  metadata: {meta}")
