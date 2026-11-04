@@ -18,15 +18,16 @@ Source: NVNM-Chain/nvnmchain-docs, `content/docs/modules/anchoring-module.mdx` a
 
 - There's no native gas token. Fees are paid in the TIP-20 stablecoin **nUSD** at `0x20C0000000000000000000000000000000000000` (6 decimals). Contract calls fall back to nUSD automatically.
 - Gas price is in attodollars (10^-18 USD) per gas. Fee in USD = `gas_used * gas_price / 1e18`.
+- Gas grows with the bytes stored: about 3.6M + 7,800 gas per byte of uri plus metadata (≈250k per 32-byte word). Fit over 869 `addRecord` txs on 4 Nov 2026, R² 1.00. A short kit record costs ~5M gas; a full one (2,048 + 2,048 bytes) ~36M.
 - `eth_getBalance` returns a fixed huge placeholder. **Ignore it.** Read the nUSD `balanceOf` instead.
 
 ## Contract
 
-Address `0x0000000000000000000000000000000000000A00`. It's a normal Solidity contract installed at genesis, not a precompile.
+Address `0x0000000000000000000000000000000000000A00`. It's a normal Solidity contract installed at genesis, not a precompile. It sits behind an ERC-1967 proxy that the contract's owner can upgrade without a chain upgrade (source: `NVNM-Chain/nvnmchain-contracts` `src/Anchoring.sol`, checked 4 Nov 2026).
 
 | Function | Who can call |
 |---|---|
-| `addRegistry(string name, string description, string metadata)` | Any wallet (EOA); caller becomes admin |
+| `addRegistry(string name, string description, string metadata)` | Any address; caller becomes admin |
 | `addRecord(Record record)` | Registry `admin` or `editor` |
 | `updateRecordStatus(uint64 registryId, uint64 recordId, uint64 index, string status)` | `admin` or `editor` |
 | `grantRole(uint64 registryId, string checksum, address account, string role)` | Registry `admin` (empty checksum = registry-wide) |
@@ -39,9 +40,9 @@ Address `0x0000000000000000000000000000000000000A00`. It's a normal Solidity con
 ```solidity
 struct Record {
     string uri;           // link to off-chain data; REQUIRED, max 2048 bytes (the kit defaults to urn:sha256:<checksum>)
-    string checksum;      // hash of the data
-    string checksumAlgo;  // e.g. "sha256"
-    string metadata;      // JSON string; "" and "{}" are rejected
+    string checksum;      // hash of the data; max 64 bytes
+    string checksumAlgo;  // e.g. "sha256"; max 128 bytes
+    string metadata;      // JSON string by convention, max 2048 bytes; "" and "{}" are rejected
     string timestamp;     // set by chain
     string status;        // user-defined, e.g. "active"
     uint64 recordId;      // set by chain (pass 0)
@@ -59,6 +60,7 @@ PageRequest = `(bytes key, uint64 offset, uint64 limit, bool countTotal, bool re
 - `AddRecord(address indexed caller, uint64 registryId, uint64 recordId, uint64 index, string checksum)`, topic0 `0x1a3295fa8cc0e28c95d21912c9e6958f3bc740231781f7640ad885c972a352fd`
 
 ### Gotchas
-- All write calls must come from an EOA. Contracts calling on a user's behalf revert with `sender not an eoa`.
+- There's no EOA gate since the move to a Solidity contract: contracts and smart wallets can call it (source comment, and an `eth_call` from an address with code went through on 4 Nov 2026). The old precompile reverted with `sender not an eoa`.
+- The contract checks lengths only. Any bytes fit in `uri` and `metadata`, including binary data that is neither UTF-8 nor JSON. Kit 0.3.2 reads them without crashing. Other readers may not.
 - `records()` reverts with `record does not exist` when nothing matches. `verify.py` treats that as "not found".
 - The `creator` field of a registry is a bech32 `nvnm1...` address, even though the caller is an EVM address.
