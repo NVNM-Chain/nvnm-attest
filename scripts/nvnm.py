@@ -431,16 +431,23 @@ def log_line(registry_id, entry: dict):
             f.seek(end - 1)
             if f.read(1) != b"\n":
                 f.write(b"\n")  # the last write was cut short by a crash: end that line first
-        f.write((json.dumps(entry, ensure_ascii=False) + "\n").encode())
+        f.write((json.dumps({"chain": CHAIN_ID, **entry}, ensure_ascii=False) + "\n").encode())
 
 
 def saved_hashes(registry_id, days=2):
-    """Item hashes in a registry's newest local logs (the last `days` files): data a bot anchored and saved."""
+    """Item hashes in a registry's newest local logs (the last `days` files): data a bot anchored and saved.
+
+    Only entries from this chain count. Ones from another chain, or from kits before 0.3.3 (no "chain"), are left out,
+    so the bot checks those on chain.
+    """
     hashes = set()
     for path in sorted((DATA_DIR / str(registry_id)).glob("*.jsonl"))[-days:]:
-        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for line in text.split("\n"):  # not splitlines(): JSON strings can hold U+2028
             try:
-                hashes.update(it["hash"] for it in json.loads(line).get("items") or [])
+                entry = json.loads(line)
+                if entry.get("chain") == CHAIN_ID:
+                    hashes.update(it["hash"] for it in entry.get("items") or [])
             except (ValueError, KeyError):
                 continue  # a line cut short by a crash
     return hashes
