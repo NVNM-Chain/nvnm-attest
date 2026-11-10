@@ -9,6 +9,7 @@ NAME = "my-source"          # short, unique name; shows up in every record's met
 DEFAULT_EVERY = 300         # seconds between fetches
 BATCH = 1                   # 1 = one tx per data point | N = Merkle batch of N | "all" = one tx per fetch
 PUBLIC = False              # True = put the data itself in on-chain metadata (only for public data!)
+SKIP_ANCHORED = False       # True = check the chain first and never anchor the same data twice (for rolling windows)
 
 
 def fetch():
