@@ -30,7 +30,9 @@ def run_once(w3, acct, src, registry, batch, public, dry_run, guard, seen=None):
     """Fetch, hash and anchor one round. Returns (items fetched, tx sent, fees, anchors skipped as already on chain).
 
     With `seen` (a set, kept between runs; sources opt in with SKIP_ANCHORED = True) the bot anchors each piece of
-    data once: it skips hashes it has already anchored or found, and checks the chain before every send.
+    data once. `seen` holds the hashes that are on chain and saved in data/: the bot skips those and checks the chain
+    before every send. Data found on chain but not in `seen` (sent before a restart, or its log or receipt failed) is
+    saved to data/ before it's skipped, so the original stays available to verify.
     """
     fetched_at = int(time.time())
     items = src.fetch()
@@ -43,6 +45,7 @@ def run_once(w3, acct, src, registry, batch, public, dry_run, guard, seen=None):
     size = len(items) if batch == "all" else int(batch)
     sent, fees = 0, 0.0
     for group in chunks(items, max(size, 1)):
+        saved = [{"key": g["key"], "data": g["data"], "hash": g["hash"]} for g in group]
         if len(group) == 1:
             it = group[0]
             checksum, uri = it["hash"], it.get("uri", "")
@@ -53,10 +56,15 @@ def run_once(w3, acct, src, registry, batch, public, dry_run, guard, seen=None):
             checksum, uri = nvnm.merkle_root([g["hash"] for g in group]), ""
             meta = {"src": src.NAME, "type": "merkle-batch", "count": len(group),
                     "first": group[0]["key"], "last": group[-1]["key"], "ts": fetched_at}
-        if seen is not None and nvnm.find_records(w3, registry, checksum, limit=1):
-            seen.update(g["hash"] for g in group)  # already on chain, e.g. sent before a restart
-            skipped += 1
-            continue
+        if seen is not None:
+            found = nvnm.find_records(w3, registry, checksum, limit=1)
+            if found:  # on chain but not saved here: keep the original data before skipping it
+                if not dry_run:
+                    nvnm.log_line(registry, {"checksum": checksum, "recordId": found[0]["recordId"],
+                                             "index": found[0]["index"], "found_on_chain": True, "items": saved})
+                seen.update(g["hash"] for g in group)
+                skipped += 1
+                continue
         if dry_run:
             print(f"  [dry-run] would anchor {checksum[:16]}... uri={uri or '(default)'} {meta}")
             if seen is not None:
@@ -65,10 +73,9 @@ def run_once(w3, acct, src, registry, batch, public, dry_run, guard, seen=None):
         res = nvnm.add_record(w3, acct, registry, checksum, meta, uri=uri, guard=guard)
         sent += 1
         fees += res["fee_usd"] or 0
+        nvnm.log_line(registry, {"checksum": checksum, "meta": meta, **res, "items": saved})
         if seen is not None:
-            seen.update(g["hash"] for g in group)
-        nvnm.log_line(registry, {"checksum": checksum, "meta": meta, **res,
-                                 "items": [{"key": g["key"], "data": g["data"], "hash": g["hash"]} for g in group]})
+            seen.update(g["hash"] for g in group)  # only once saved: if the log fails, the chain check saves it later
     return n_fetched, sent, fees, skipped
 
 
@@ -118,7 +125,7 @@ def main():
     every = a.every or getattr(src, "DEFAULT_EVERY", 60)
     batch = a.batch or str(getattr(src, "BATCH", 1))
     public = getattr(src, "PUBLIC", False)
-    seen = set() if getattr(src, "SKIP_ANCHORED", False) else None
+    seen = nvnm.saved_hashes(a.registry) if getattr(src, "SKIP_ANCHORED", False) else None
 
     w3 = nvnm.connect()
     acct = None if a.dry_run else nvnm.load_account(a.wallet)

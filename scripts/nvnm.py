@@ -429,6 +429,18 @@ def log_line(registry_id, entry: dict):
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
+def saved_hashes(registry_id, days=2):
+    """Item hashes in a registry's newest local logs (the last `days` files): data a bot anchored and saved."""
+    hashes = set()
+    for path in sorted((DATA_DIR / str(registry_id)).glob("*.jsonl"))[-days:]:
+        for line in path.read_text(errors="replace").splitlines():
+            try:
+                hashes.update(it["hash"] for it in json.loads(line).get("items") or [])
+            except (ValueError, KeyError):
+                continue  # a line cut short by a crash
+    return hashes
+
+
 def tx_link(tx_hash: str) -> str:
     h = tx_hash if tx_hash.startswith("0x") else "0x" + tx_hash
     return f"{EXPLORER}/tx/{h}"
