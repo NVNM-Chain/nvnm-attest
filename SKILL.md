@@ -63,7 +63,7 @@ python scripts/attest_bot.py --wallet <bot-name> --registry <id> --source source
 ```
 For a new data source, copy `sources/_template.py` and write its `fetch()`. It returns a list of `{"key": ..., "data": {...}}`, optionally with a `"uri"` (a public link to the data) per point. Use public APIs where possible. Wrap requests with a timeout. Check the source's terms first (see Rules).
 
-If a fetch returns data that earlier fetches already returned (a rolling window, a daily file), set `SKIP_ANCHORED = True` in the source. The bot then sends each piece of data once: it checks the chain before every anchor, so a restart doesn't re-anchor either. It costs one chain read per anchor. `sources/noaa_goes_xray.py` is the example: a 6-hour file, one record per minute, each minute anchored once.
+If a fetch returns data that earlier fetches already returned (a rolling window, a daily file), set `SKIP_ANCHORED = True` in the source. The bot then sends each piece of data once: it checks the chain before every anchor, so a restart doesn't re-anchor either. It costs one chain read per anchor. Use it with `BATCH = 1`: with batches the chain check matches whole Merkle roots, so data the bot didn't save in `data/` (sent from another machine, or a lost log) can be anchored again in a new batch. `sources/noaa_goes_xray.py` is the example: a 6-hour file, one record per minute, each minute anchored once.
 
 To keep a bot running after the session ends, suggest `nohup python scripts/attest_bot.py ... > bot.log 2>&1 &`, or a cron job, or a small cloud VM.
 

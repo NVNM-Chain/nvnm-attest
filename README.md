@@ -31,7 +31,7 @@ Claude handles every step: wallet, funding, registry, attesting. Each new wallet
 
 **2. Check it landed.** A bot logging "success" isn't proof. Ask Claude for the transaction link (`https://explorer.nvnm.testnet.nvnmchain.io/tx/0x…`), then ask it to "verify this data in registry N". You want `VERIFIED`.
 
-**3. Keep it running.** One wallet per bot, and one copy of each bot. The kit refuses to start a second runner on the same wallet, so a bot can't anchor the same record twice. A source with `SKIP_ANCHORED = True` also checks the chain before each anchor, so a restart doesn't send anything twice either.
+**3. Keep it running.** One wallet per bot, and one copy of each bot. The kit refuses to start a second runner on the same wallet, so a bot can't anchor the same record twice. A source with `SKIP_ANCHORED = True` and `BATCH = 1` also checks the chain before each anchor, so a restart doesn't send anything twice either.
 
 ## About fees
 
