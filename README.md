@@ -25,13 +25,13 @@ A bot started in a claude.ai chat stops when the chat does. For a bot that keeps
 - "Attest this PDF on NVNM and show me the transaction."
 - "Set up a wallet and a registry for attesting Hyperliquid prices on NVNM, then run the bot every minute."
 - "Make a new NVNM source that attests the gold and oil price every hour from a free API."
-- "Create a bot that attests the top 50 chains by TVL from DefiLlama daily."
+- "Create a bot that attests NOAA's solar flare readings (GOES X-ray flux), one record per minute."
 
 Claude handles every step: wallet, funding, registry, attesting. Each new wallet gets 100 test nUSD from the faucet automatically, and running bots top themselves up.
 
 **2. Check it landed.** A bot logging "success" isn't proof. Ask Claude for the transaction link (`https://explorer.nvnm.testnet.nvnmchain.io/tx/0x…`), then ask it to "verify this data in registry N". You want `VERIFIED`.
 
-**3. Keep it running.** One wallet per bot, and one copy of each bot. The kit refuses to start a second runner on the same wallet, so a bot can't anchor the same record twice.
+**3. Keep it running.** One wallet per bot, and one copy of each bot. The kit refuses to start a second runner on the same wallet, so a bot can't anchor the same record twice. A source with `SKIP_ANCHORED = True` and `BATCH = 1` also checks the chain before each anchor, so a restart doesn't send anything twice either.
 
 ## About fees
 
@@ -42,7 +42,8 @@ NVNM Chain has no native gas token: fees are paid in nUSD, a stablecoin. On the 
 - Attest **anything** you think is interesting, with these exceptions:
   - **no client or production data** on the testnet;
   - **no secrets or personal data**. Metadata is public;
-  - **no hash of a small value** (one price, one rent figure) on its own: it can be guessed back. Salt it or leave it off.
+  - **no hash of a small value** (one price, one rent figure) on its own: it can be guessed back. Salt it or leave it off;
+  - **only data you may reuse**: public domain or an open licence (CC0, CC BY, OGL). Read the source's terms first. Skip it if they say "personal" or "non-commercial use only", ban republishing, or need a login.
 - One wallet per bot. Its key stays in the kit's `wallets/` folder on your machine. Never paste it into chat or commit it.
 - Pick a cadence that fits the data: fast-moving prices every few seconds or minutes, slow data hourly or daily.
 
@@ -58,7 +59,7 @@ NVNM Chain has no native gas token: fees are paid in nUSD, a stablecoin. On the 
 
 ## Ideas to start with
 
-Hyperliquid perps and spot prices · Derive options versus Hyperliquid · tokenized versus listed equity prices · GPU/CPU rental prices · commodity prices · inflation and index data · DefiLlama TVL · trading card prices · sports and fantasy data.
+Hyperliquid perps and spot prices · Derive options versus Hyperliquid · tokenized versus listed equity prices · GPU/CPU rental prices · commodity prices · inflation and index data · solar flares and space weather (NOAA) · trading card prices · sports and fantasy data.
 
 ## What's in the folder
 
@@ -73,5 +74,5 @@ Hyperliquid perps and spot prices · Derive options versus Hyperliquid · tokeni
 | `scripts/attest_bot.py` | Run a scheduled attestation bot |
 | `scripts/verify.py` | Check if data was anchored |
 | `scripts/faucet.py` | Ask the faucet for test nUSD |
-| `sources/` | Data sources for bots: Hyperliquid, DefiLlama, and a template for your own |
+| `sources/` | Data sources for bots: Hyperliquid prices, NOAA solar X-rays, and a template for your own |
 | `references/anchoring-module.md` | Contract details |

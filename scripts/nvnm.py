@@ -28,7 +28,7 @@ FAUCET_API = os.getenv("NVNM_FAUCET_API", f"{FAUCET}/api/faucet")  # POST {"addr
 
 ANCHORING = Web3.to_checksum_address("0x0000000000000000000000000000000000000A00")
 NUSD = Web3.to_checksum_address("0x20C0000000000000000000000000000000000000")  # fee token, 6 decimals
-KIT_VERSION = "nvnm-attest/0.3.2"
+KIT_VERSION = "nvnm-attest/0.3.3"
 
 KIT_DIR = Path(__file__).resolve().parent.parent
 WALLET_DIR = Path(os.getenv("NVNM_WALLET_DIR", KIT_DIR / "wallets"))
@@ -188,6 +188,11 @@ def load_account(name: str):
 
 def nusd_balance(w3, address) -> float:
     return nusd(w3).functions.balanceOf(address).call() / 1e6
+
+
+def has_pending(w3, address) -> bool:
+    """True while a transaction from this address is sent but not yet in a block."""
+    return w3.eth.get_transaction_count(address, "pending") > w3.eth.get_transaction_count(address, "latest")
 
 
 # --- Faucet ------------------------------------------------------------------
@@ -425,8 +430,32 @@ def log_line(registry_id, entry: dict):
     """Keep the original data locally: an anchor is only useful if the data can be re-hashed later."""
     d = DATA_DIR / str(registry_id)
     d.mkdir(parents=True, exist_ok=True)
-    with open(d / f"{time.strftime('%Y-%m-%d')}.jsonl", "a") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    with open(d / f"{time.strftime('%Y-%m-%d')}.jsonl", "a+b") as f:
+        end = f.seek(0, os.SEEK_END)
+        if end:
+            f.seek(end - 1)
+            if f.read(1) != b"\n":
+                f.write(b"\n")  # the last write was cut short by a crash: end that line first
+        f.write((json.dumps({"chain": CHAIN_ID, **entry}, ensure_ascii=False) + "\n").encode())
+
+
+def saved_hashes(registry_id, days=2):
+    """Item hashes in a registry's newest local logs (the last `days` files): data a bot anchored and saved.
+
+    Only entries from this chain count. Ones from another chain, or from kits before 0.3.3 (no "chain"), are left out,
+    so the bot checks those on chain.
+    """
+    hashes = set()
+    for path in sorted((DATA_DIR / str(registry_id)).glob("*.jsonl"))[-days:]:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for line in text.split("\n"):  # not splitlines(): JSON strings can hold U+2028
+            try:
+                entry = json.loads(line)
+                if entry.get("chain") == CHAIN_ID:
+                    hashes.update(it["hash"] for it in entry.get("items") or [])
+            except (ValueError, KeyError):
+                continue  # a line cut short by a crash
+    return hashes
 
 
 def tx_link(tx_hash: str) -> str:

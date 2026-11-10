@@ -26,14 +26,29 @@ def chunks(items, size):
         yield items[i:i + size]
 
 
-def run_once(w3, acct, src, registry, batch, public, dry_run, guard):
+def run_once(w3, acct, src, registry, batch, public, dry_run, guard, seen=None):
+    """Fetch, hash and anchor one round. Returns (items fetched, tx sent, fees, anchors skipped as already on chain).
+
+    With `seen` (a set, kept between runs; sources opt in with SKIP_ANCHORED = True) the bot anchors each piece of
+    data once. `seen` holds the hashes that are on chain and saved in data/: the bot skips those and checks the chain
+    before every send. Data found on chain but not in `seen` (sent before a restart, or its log or receipt failed) is
+    saved to data/ before it's skipped, so the original stays available to verify.
+    """
     fetched_at = int(time.time())
     items = src.fetch()
     for it in items:
         it["hash"] = nvnm.sha256_hex(nvnm.canonical_json(it["data"]))
+    n_fetched, skipped = len(items), 0
+    if seen is not None:
+        seen.intersection_update(it["hash"] for it in items)  # forget what the source no longer returns
+        items = [it for it in items if it["hash"] not in seen]
+        if items and not dry_run and nvnm.has_pending(w3, acct.address):
+            # an earlier send timed out before its receipt: the chain check can't see that tx until it's mined
+            raise RuntimeError(f"a tx from {acct.address} is still pending; anchoring resumes once it's mined")
     size = len(items) if batch == "all" else int(batch)
     sent, fees = 0, 0.0
     for group in chunks(items, max(size, 1)):
+        saved = [{"key": g["key"], "data": g["data"], "hash": g["hash"]} for g in group]
         if len(group) == 1:
             it = group[0]
             checksum, uri = it["hash"], it.get("uri", "")
@@ -44,15 +59,27 @@ def run_once(w3, acct, src, registry, batch, public, dry_run, guard):
             checksum, uri = nvnm.merkle_root([g["hash"] for g in group]), ""
             meta = {"src": src.NAME, "type": "merkle-batch", "count": len(group),
                     "first": group[0]["key"], "last": group[-1]["key"], "ts": fetched_at}
+        if seen is not None:
+            found = nvnm.find_records(w3, registry, checksum, limit=1)
+            if found:  # on chain but not saved here: keep the original data before skipping it
+                if not dry_run:
+                    nvnm.log_line(registry, {"checksum": checksum, "recordId": found[0]["recordId"],
+                                             "index": found[0]["index"], "found_on_chain": True, "items": saved})
+                seen.update(g["hash"] for g in group)
+                skipped += 1
+                continue
         if dry_run:
-            print(f"  [dry-run] would anchor {checksum[:16]}... {meta}")
+            print(f"  [dry-run] would anchor {checksum[:16]}... uri={uri or '(default)'} {meta}")
+            if seen is not None:
+                seen.update(g["hash"] for g in group)  # as if sent, so the next dry run shows what would be new
             continue
         res = nvnm.add_record(w3, acct, registry, checksum, meta, uri=uri, guard=guard)
         sent += 1
         fees += res["fee_usd"] or 0
-        nvnm.log_line(registry, {"checksum": checksum, "meta": meta, **res,
-                                 "items": [{"key": g["key"], "data": g["data"], "hash": g["hash"]} for g in group]})
-    return len(items), sent, fees
+        nvnm.log_line(registry, {"checksum": checksum, "meta": meta, **res, "items": saved})
+        if seen is not None:
+            seen.update(g["hash"] for g in group)  # only once saved: if the log fails, the chain check saves it later
+    return n_fetched, sent, fees, skipped
 
 
 LOW_BALANCE = 5.0           # nUSD; below this the bot asks the faucet for more
@@ -101,6 +128,7 @@ def main():
     every = a.every or getattr(src, "DEFAULT_EVERY", 60)
     batch = a.batch or str(getattr(src, "BATCH", 1))
     public = getattr(src, "PUBLIC", False)
+    seen = nvnm.saved_hashes(a.registry) if getattr(src, "SKIP_ANCHORED", False) else None
 
     w3 = nvnm.connect()
     acct = None if a.dry_run else nvnm.load_account(a.wallet)
@@ -119,7 +147,8 @@ def main():
         print(f"Wallet {acct.address}: {bal:.4f} nUSD")
         if bal <= 0:
             raise SystemExit(f"Wallet has no nUSD. Fund it: python scripts/faucet.py --wallet {a.wallet}")
-    print(f"Bot '{src.NAME}' -> registry {a.registry}, every {every}s, batch={batch}, public data={public}")
+    print(f"Bot '{src.NAME}' -> registry {a.registry}, every {every}s, batch={batch}, public data={public}, "
+          f"skip anchored={seen is not None}")
 
     runs, total_tx, total_fee, backoff = 0, 0, 0.0, every
     while True:
@@ -127,12 +156,13 @@ def main():
         try:
             if auto_fund:
                 top_up(w3, acct.address, funding)
-            n_items, n_tx, fee = run_once(w3, acct, src, a.registry, batch, public, a.dry_run, guard)
+            n_items, n_tx, fee, n_skip = run_once(w3, acct, src, a.registry, batch, public, a.dry_run, guard, seen)
             total_tx += n_tx
             total_fee += fee
             backoff = every
             avg = f", avg fee ${total_fee / total_tx:.6f}/tx" if total_tx else ""
-            print(f"[{time.strftime('%H:%M:%S')}] run {runs + 1}: {n_items} items, {n_tx} tx "
+            found = f", {n_skip} already on chain" if n_skip else ""
+            print(f"[{time.strftime('%H:%M:%S')}] run {runs + 1}: {n_items} items, {n_tx} tx{found} "
                   f"(total {total_tx} tx, ${total_fee:.4f}{avg})")
         except nvnm.WalletInUse as e:
             raise SystemExit(f"[{time.strftime('%H:%M:%S')}] stopped: {e}")

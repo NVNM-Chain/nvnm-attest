@@ -61,7 +61,9 @@ Pick or create a source in `sources/`, test it dry, then run it:
 python scripts/attest_bot.py --wallet <bot-name> --registry <id> --source sources/hyperliquid_mids.py --dry-run --max-runs 1
 python scripts/attest_bot.py --wallet <bot-name> --registry <id> --source sources/hyperliquid_mids.py
 ```
-For a new data source, copy `sources/_template.py` and write its `fetch()`. It returns a list of `{"key": ..., "data": {...}}`, optionally with a `"uri"` (a public link to the data) per point. Use public APIs where possible. Wrap requests with a timeout.
+For a new data source, copy `sources/_template.py` and write its `fetch()`. It returns a list of `{"key": ..., "data": {...}}`, optionally with a `"uri"` (a public link to the data) per point. Use public APIs where possible. Wrap requests with a timeout. Check the source's terms first (see Rules).
+
+If a fetch returns data that earlier fetches already returned (a rolling window, a daily file), set `SKIP_ANCHORED = True` in the source. The bot then sends each piece of data once: it checks the chain before every anchor, so a restart doesn't re-anchor either. It costs one chain read per anchor. Use it with `BATCH = 1`: with batches the chain check matches whole Merkle roots, so data the bot didn't save in `data/` (sent from another machine, or a lost log) can be anchored again in a new batch. `sources/noaa_goes_xray.py` is the example: a 6-hour file, one record per minute, each minute anchored once.
 
 To keep a bot running after the session ends, suggest `nohup python scripts/attest_bot.py ... > bot.log 2>&1 &`, or a cron job, or a small cloud VM.
 
@@ -93,6 +95,7 @@ Every point stays provable either way: the bot logs each item and its hash local
 - **Anything can be attested**, and people decide what's useful. Two exceptions:
   - **No client or production data** on the testnet.
   - **No secrets or personal data** anywhere. The checksum is a hash, but `metadata` and `uri` are stored **in plain text, publicly**.
+- **Only data the source's terms let you reuse.** Before building a source, read its terms: public domain or an open licence (CC0, CC BY, OGL) is fine. Don't build on terms that say "personal" or "non-commercial use only", ban republishing, or need a login or key you'd have to share. If the terms are unclear, say so and suggest an open source instead.
 - Set `PUBLIC = True` in a source only for public data. It puts the data itself in onchain metadata.
 - Keep the original data. Bots write it to `data/<registry>/<date>.jsonl` automatically. An anchor is only useful if the data can be re-hashed later.
 - Choose cadences that make sense for the data: every few seconds for volatile prices, hourly or daily for slow data.
