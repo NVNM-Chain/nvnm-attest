@@ -42,6 +42,9 @@ def run_once(w3, acct, src, registry, batch, public, dry_run, guard, seen=None):
     if seen is not None:
         seen.intersection_update(it["hash"] for it in items)  # forget what the source no longer returns
         items = [it for it in items if it["hash"] not in seen]
+        if items and not dry_run and nvnm.has_pending(w3, acct.address):
+            # an earlier send timed out before its receipt: the chain check can't see that tx until it's mined
+            raise RuntimeError(f"a tx from {acct.address} is still pending; anchoring resumes once it's mined")
     size = len(items) if batch == "all" else int(batch)
     sent, fees = 0, 0.0
     for group in chunks(items, max(size, 1)):

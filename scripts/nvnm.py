@@ -190,6 +190,11 @@ def nusd_balance(w3, address) -> float:
     return nusd(w3).functions.balanceOf(address).call() / 1e6
 
 
+def has_pending(w3, address) -> bool:
+    """True while a transaction from this address is sent but not yet in a block."""
+    return w3.eth.get_transaction_count(address, "pending") > w3.eth.get_transaction_count(address, "latest")
+
+
 # --- Faucet ------------------------------------------------------------------
 class FaucetError(RuntimeError):
     def __init__(self, status, message, retry_after=None):
