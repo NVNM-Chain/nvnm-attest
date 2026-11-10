@@ -425,15 +425,20 @@ def log_line(registry_id, entry: dict):
     """Keep the original data locally: an anchor is only useful if the data can be re-hashed later."""
     d = DATA_DIR / str(registry_id)
     d.mkdir(parents=True, exist_ok=True)
-    with open(d / f"{time.strftime('%Y-%m-%d')}.jsonl", "a") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    with open(d / f"{time.strftime('%Y-%m-%d')}.jsonl", "a+b") as f:
+        end = f.seek(0, os.SEEK_END)
+        if end:
+            f.seek(end - 1)
+            if f.read(1) != b"\n":
+                f.write(b"\n")  # the last write was cut short by a crash: end that line first
+        f.write((json.dumps(entry, ensure_ascii=False) + "\n").encode())
 
 
 def saved_hashes(registry_id, days=2):
     """Item hashes in a registry's newest local logs (the last `days` files): data a bot anchored and saved."""
     hashes = set()
     for path in sorted((DATA_DIR / str(registry_id)).glob("*.jsonl"))[-days:]:
-        for line in path.read_text(errors="replace").splitlines():
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             try:
                 hashes.update(it["hash"] for it in json.loads(line).get("items") or [])
             except (ValueError, KeyError):
