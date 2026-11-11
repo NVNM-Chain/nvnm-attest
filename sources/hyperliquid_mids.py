@@ -7,6 +7,7 @@ import os
 import urllib.request
 
 NAME = "hyperliquid-mids"
+DESCRIPTION = "Hyperliquid perp mid prices, from Hyperliquid's public API. Not affiliated with Hyperliquid."
 DEFAULT_EVERY = 60          # seconds
 BATCH = 1                   # one transaction per data point
 PUBLIC = True               # public market data: include the price in on-chain metadata

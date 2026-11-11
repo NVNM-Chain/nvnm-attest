@@ -33,6 +33,8 @@ Claude handles every step: wallet, funding, registry, attesting. Each new wallet
 
 **3. Keep it running.** One wallet per bot, and one copy of each bot. The kit refuses to start a second runner on the same wallet, so a bot can't anchor the same record twice. A source with `SKIP_ANCHORED = True` and `BATCH = 1` also checks the chain before each anchor, so a restart doesn't send anything twice either.
 
+To run every source on one computer that stays on, new ones included, ask Claude to "install the NVNM fleet" (`python3.12 scripts/fleet.py --install` on a Mac). Every hour it pulls the kit and starts a bot, with its own wallet and registry, for each source that isn't running yet. Bots you started yourself count, so it never runs a second copy. While the computer sleeps, its bots pause.
+
 ## About fees
 
 NVNM Chain has no native gas token: fees are paid in nUSD, a stablecoin. On the testnet that is test nUSD from the faucet, so anchoring costs you nothing. The scripts print the fee of every transaction.
@@ -74,5 +76,6 @@ Hyperliquid perps and spot prices · Derive options versus Hyperliquid · tokeni
 | `scripts/attest_bot.py` | Run a scheduled attestation bot |
 | `scripts/verify.py` | Check if data was anchored |
 | `scripts/faucet.py` | Ask the faucet for test nUSD |
+| `scripts/fleet.py` | Keep a bot running for every source, checked every hour |
 | `sources/` | Data sources for bots: Hyperliquid prices, NOAA solar X-rays, and a template for your own |
 | `references/anchoring-module.md` | Contract details |
