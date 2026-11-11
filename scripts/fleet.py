@@ -38,6 +38,20 @@ PLIST = Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
 FUNDER_AMOUNT = 5  # nUSD a --funder wallet sends to a new bot when the faucet says no (~1,400 anchors)
 
 
+def lock(wait):
+    """Hold fleet/lock until this process exits, so runs, --skip and --unskip never change state at once."""
+    FLEET_DIR.mkdir(exist_ok=True)
+    handle = open(FLEET_DIR / "lock", "w")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        if not wait:
+            raise SystemExit("Another fleet run is still going. This one stops.")
+        print("Waiting for the fleet run that's going now to finish...")
+        fcntl.flock(handle, fcntl.LOCK_EX)
+    return handle
+
+
 def load_state():
     if STATE.exists():
         return json.loads(STATE.read_text())
@@ -59,7 +73,9 @@ def running_bots():
     bots = {}
     for line in out.splitlines():
         pid, _, command = line.strip().partition(" ")
-        args = command.split()
+        args = []
+        for arg in command.split():  # "--source=x" and "--source x" are the same to argparse
+            args.extend(arg.split("=", 1) if arg.startswith("--") and "=" in arg else [arg])
         if not any(arg.endswith("attest_bot.py") for arg in args) or "--dry-run" in args:
             continue
         opts = dict(zip(args, args[1:]))
@@ -175,10 +191,10 @@ def unskip(state, name):
 
 def install(funder):
     run = [sys.executable, str(Path(__file__).resolve())] + (["--funder", funder] if funder else [])
+    FLEET_DIR.mkdir(exist_ok=True)  # the cron line and launchd both log into it
     if platform.system() != "Darwin":
         line = f"0 * * * * cd {nvnm.KIT_DIR} && {' '.join(run)} >> {FLEET_DIR / 'fleet.log'} 2>&1"
         raise SystemExit(f"--install uses launchd, which is macOS only. Elsewhere add this line with crontab -e:\n{line}")
-    FLEET_DIR.mkdir(exist_ok=True)
     PLIST.parent.mkdir(parents=True, exist_ok=True)
     PLIST.write_bytes(plistlib.dumps({
         "Label": LABEL,
@@ -227,20 +243,15 @@ def main():
         return install(a.funder)
     if a.uninstall:
         return uninstall()
-    state = load_state()
     if a.status:
-        return show(state)
+        return show(load_state())
+    _held = lock(wait=bool(a.skip or a.unskip))  # released when this process exits
+    state = load_state()
     if a.skip:
         return skip(state, a.skip)
     if a.unskip:
         return unskip(state, a.unskip)
 
-    FLEET_DIR.mkdir(exist_ok=True)
-    lock = open(FLEET_DIR / "lock", "w")
-    try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        raise SystemExit("Another fleet run is still going. This one stops.")
     print(f"--- fleet run {time.strftime('%Y-%m-%d %H:%M:%S')} ---")
     if not a.no_pull:
         pull()
