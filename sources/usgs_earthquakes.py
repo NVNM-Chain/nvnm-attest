@@ -1,10 +1,13 @@
-"""Earthquakes worldwide from the USGS real-time feed, one record per event version. Public domain, no key.
+"""Earthquakes worldwide from the USGS real-time feed, one record per observed event version. Public domain, no key.
 
 The US Geological Survey (USGS) publishes every earthquake it locates, worldwide, within minutes, and updates the
 feed every minute. Each event is revised as more data comes in: magnitude, location, review status. A record
 holds one event exactly as the feed published it (a GeoJSON feature: magnitude, place, time, depth, coordinates,
-alert level, tsunami flag, review status). key = event id + its "updated" time, so every revision is anchored once
-and the chain keeps a public history of how a quake's numbers changed.
+alert level, tsunami flag, review status). key = event id + its "updated" time, so each version the bot sees is
+anchored once, and the chain keeps a public history of how a quake's numbers changed.
+
+Gaps: the bot reads the current 24-hour snapshot every DEFAULT_EVERY seconds. A version that USGS replaces before
+the next poll is never seen, and revisions made after an event leaves the 24-hour feed are not anchored.
 
 Feed: https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson (past 24 hours, all magnitudes)
 Docs: https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php
@@ -15,7 +18,7 @@ or endorses your bot. Registry description, for example: "Earthquakes worldwide,
 from the USGS real-time GeoJSON feed (public domain). Not affiliated with USGS."
 
 Runs often, anchors once: SKIP_ANCHORED makes the bot skip any event version already in the registry, even after
-a restart. A new revision of an event has a new "updated" time, so it gets its own record.
+a restart. A new revision of an event has a new "updated" time, so once seen it gets its own record.
 
 Verify a record: for 7 days, find the feature with that id in
 https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson. If its "updated" time still matches,
