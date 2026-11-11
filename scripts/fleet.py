@@ -87,6 +87,11 @@ def running_bots():
     return bots
 
 
+def folders():
+    """The wallets and data folders as absolute paths, so a relative NVNM_WALLET_DIR means the same folder anywhere."""
+    return {"NVNM_WALLET_DIR": str(nvnm.WALLET_DIR.resolve()), "NVNM_DATA_DIR": str(nvnm.DATA_DIR.resolve())}
+
+
 def description(src):
     if getattr(src, "DESCRIPTION", ""):
         return src.DESCRIPTION
@@ -143,7 +148,7 @@ def start(w3, path, state, funder, run):
         print(f"  new registry {rid}: {nvnm.EXPLORER}/anchoring/{rid}")
     LOGS.mkdir(parents=True, exist_ok=True)
     env = {k: v for k, v in os.environ.items() if k != "NVNM_PRIVATE_KEY"}
-    env["PYTHONUNBUFFERED"] = "1"
+    env.update(folders(), PYTHONUNBUFFERED="1")  # the bot runs from the kit folder: give it this run's folders
     log_path = LOGS / f"{src.NAME}.log"
     with open(log_path, "a") as log:
         proc = subprocess.Popen(
@@ -202,6 +207,7 @@ def unskip(state, name):
 def install(funder):
     run = [sys.executable, str(Path(__file__).resolve())] + (["--funder", funder] if funder else [])
     settings = {k: v for k, v in os.environ.items() if k.startswith("NVNM_") and k != "NVNM_PRIVATE_KEY"}
+    settings.update(folders())  # scheduled runs start in the kit folder, so a relative folder would move
     FLEET_DIR.mkdir(exist_ok=True)  # the cron line and launchd both log into it
     if platform.system() != "Darwin":
         command = " ".join([f"{k}={shlex.quote(v)}" for k, v in settings.items()] + [shlex.join(run)])
