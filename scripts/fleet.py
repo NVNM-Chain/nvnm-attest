@@ -20,6 +20,8 @@ import json
 import os
 import platform
 import plistlib
+import re
+import shlex
 import signal
 import subprocess
 import sys
@@ -35,6 +37,8 @@ STATE = FLEET_DIR / "state.json"
 LOGS = FLEET_DIR / "logs"
 LABEL = "io.nvnmchain.attest-fleet"
 PLIST = Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
+BOT_SOURCE = re.compile(r"--source[ =](.+?\.py)(?:\s|$)")  # the path may hold spaces: ps flattens argv
+BOT_WALLET = re.compile(r"--wallet[ =](\S+)")
 FUNDER_AMOUNT = 5  # nUSD a --funder wallet sends to a new bot when the faucet says no (~1,400 anchors)
 
 
@@ -69,18 +73,15 @@ def source_files():
 
 def running_bots():
     """Every attest_bot.py process on this machine, whoever started it: {source stem: (pid, wallet)}."""
-    out = subprocess.run(["ps", "-ax", "-o", "pid=,command="], capture_output=True, text=True).stdout
+    out = subprocess.run(["ps", "-ww", "-ax", "-o", "pid=,command="], capture_output=True, text=True).stdout
     bots = {}
     for line in out.splitlines():
         pid, _, command = line.strip().partition(" ")
-        args = []
-        for arg in command.split():  # "--source=x" and "--source x" are the same to argparse
-            args.extend(arg.split("=", 1) if arg.startswith("--") and "=" in arg else [arg])
-        if not any(arg.endswith("attest_bot.py") for arg in args) or "--dry-run" in args:
+        source = BOT_SOURCE.search(command)  # "--source=x" and "--source x" are the same to argparse
+        if "attest_bot.py" not in command or "--dry-run" in command or not source:
             continue
-        opts = dict(zip(args, args[1:]))
-        if "--source" in opts:
-            bots[Path(opts["--source"]).stem] = (int(pid), opts.get("--wallet", ""))
+        wallet = BOT_WALLET.search(command)
+        bots[Path(source.group(1)).stem] = (int(pid), wallet.group(1) if wallet else "")
     return bots
 
 
@@ -191,9 +192,12 @@ def unskip(state, name):
 
 def install(funder):
     run = [sys.executable, str(Path(__file__).resolve())] + (["--funder", funder] if funder else [])
+    settings = {k: v for k, v in os.environ.items() if k.startswith("NVNM_") and k != "NVNM_PRIVATE_KEY"}
     FLEET_DIR.mkdir(exist_ok=True)  # the cron line and launchd both log into it
     if platform.system() != "Darwin":
-        line = f"0 * * * * cd {nvnm.KIT_DIR} && {' '.join(run)} >> {FLEET_DIR / 'fleet.log'} 2>&1"
+        command = " ".join([f"{k}={shlex.quote(v)}" for k, v in settings.items()] + [shlex.join(run)])
+        line = (f"0 * * * * cd {shlex.quote(str(nvnm.KIT_DIR))} && {command} "
+                f">> {shlex.quote(str(FLEET_DIR / 'fleet.log'))} 2>&1")
         raise SystemExit(f"--install uses launchd, which is macOS only. Elsewhere add this line with crontab -e:\n{line}")
     PLIST.parent.mkdir(parents=True, exist_ok=True)
     PLIST.write_bytes(plistlib.dumps({
@@ -205,7 +209,8 @@ def install(funder):
         "AbandonProcessGroup": True,  # the bots it starts keep running after each hourly run ends
         "StandardOutPath": str(FLEET_DIR / "fleet.log"),
         "StandardErrorPath": str(FLEET_DIR / "fleet.log"),
-        "EnvironmentVariables": {"PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin", "PYTHONUNBUFFERED": "1"},
+        "EnvironmentVariables": {"PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin", "PYTHONUNBUFFERED": "1",
+                                 **settings},  # the same wallets folder and network as this shell
     }))
     domain = f"gui/{os.getuid()}"
     subprocess.run(["launchctl", "bootout", domain, str(PLIST)], capture_output=True)  # an older install, if any
