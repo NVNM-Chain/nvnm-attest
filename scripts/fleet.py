@@ -64,7 +64,9 @@ def load_state():
 
 def save_state(state):
     FLEET_DIR.mkdir(exist_ok=True)
-    STATE.write_text(json.dumps(state, indent=2))
+    tmp = STATE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=2))
+    os.replace(tmp, STATE)  # atomic: --status, which takes no lock, never reads half a file
 
 
 def source_files():
@@ -106,8 +108,12 @@ def fund(w3, address, funder, faucet_open):
             print(f"  faucet: {e}")
             faucet_open = False
     if funder:
-        token = nvnm.nusd(w3)
-        tx, _, _ = nvnm.send(w3, nvnm.load_account(funder), token.functions.transfer(address, int(FUNDER_AMOUNT * 1e6)))
+        token, payer = nvnm.nusd(w3), nvnm.load_account(funder)
+        guard = nvnm.claim_wallet(w3, funder, payer.address)  # refuses a wallet a running bot is using
+        try:
+            tx, _, _ = nvnm.send(w3, payer, token.functions.transfer(address, int(FUNDER_AMOUNT * 1e6)), guard=guard)
+        finally:
+            nvnm.release_wallet(guard)
         print(f"  {funder} sent {FUNDER_AMOUNT} nUSD: {nvnm.tx_link(tx)}")
         return nvnm.wait_for_nusd(w3, address, timeout=60) > 0, faucet_open
     return False, faucet_open
@@ -126,10 +132,12 @@ def start(w3, path, state, funder, faucet_open):
         if not funded:
             print(f"  {acct.address} has no nUSD yet. The next run tries again.")
             return faucet_open
-    rid = state["registries"].get(path.stem)
-    if rid is None:
+    known = state["registries"].get(path.stem)
+    if known and known["chain"] == nvnm.CHAIN_ID and known["admin"] == acct.address:
+        rid = known["id"]
+    else:  # first run, or a new wallets folder or chain: the old registry isn't this wallet's to write to
         rid, _, _ = nvnm.create_registry(w3, acct, src.NAME, description(src), {"kit": nvnm.KIT_VERSION})
-        state["registries"][path.stem] = rid
+        state["registries"][path.stem] = {"id": rid, "chain": nvnm.CHAIN_ID, "admin": acct.address}
         save_state(state)
         print(f"  new registry {rid}: {nvnm.EXPLORER}/anchoring/{rid}")
     LOGS.mkdir(parents=True, exist_ok=True)
@@ -155,7 +163,8 @@ def pull():
 def show(state):
     bots = running_bots()
     for path in source_files():
-        stem, rid = path.stem, state["registries"].get(path.stem)
+        stem, known = path.stem, state["registries"].get(path.stem)
+        rid = known["id"] if known and known["chain"] == nvnm.CHAIN_ID else None
         if stem in state["skip"]:
             what = "skipped"
         elif stem in bots:
