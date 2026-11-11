@@ -67,6 +67,8 @@ If a fetch returns data that earlier fetches already returned (a rolling window,
 
 To keep a bot running after the session ends, suggest `nohup python scripts/attest_bot.py ... > bot.log 2>&1 &`, or a cron job, or a small cloud VM.
 
+To keep every source in `sources/` running on one machine, new ones included, suggest `python scripts/fleet.py --install` (launchd on macOS; elsewhere it prints a cron line). Every hour it pulls the kit and starts a bot for each source that has none on this machine, with its own wallet (`fleet-<NAME>`) and registry. Bots started by hand count, so it never doubles one. `--status` lists what runs, `--skip <source>` stops a fleet bot and leaves it off. A source can set `DESCRIPTION` for its registry.
+
 One runner per wallet (since v0.3). Two bots on one wallet anchor the same data twice, so `attest_bot.py` guards against it:
 - It refuses to start if another bot process on this machine uses the wallet (`wallets/<name>.runner`).
 - It also refuses if the wallet anchored in the last 10 minutes from somewhere else, such as another machine, a Cloudflare Worker or another session.

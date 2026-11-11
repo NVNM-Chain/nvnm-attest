@@ -28,7 +28,7 @@ FAUCET_API = os.getenv("NVNM_FAUCET_API", f"{FAUCET}/api/faucet")  # POST {"addr
 
 ANCHORING = Web3.to_checksum_address("0x0000000000000000000000000000000000000A00")
 NUSD = Web3.to_checksum_address("0x20C0000000000000000000000000000000000000")  # fee token, 6 decimals
-KIT_VERSION = "nvnm-attest/0.3.3"
+KIT_VERSION = "nvnm-attest/0.3.4"
 
 KIT_DIR = Path(__file__).resolve().parent.parent
 WALLET_DIR = Path(os.getenv("NVNM_WALLET_DIR", KIT_DIR / "wallets"))

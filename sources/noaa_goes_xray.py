@@ -22,6 +22,7 @@ import urllib.request
 from datetime import datetime, timedelta
 
 NAME = "noaa-goes-xray"
+DESCRIPTION = "GOES X-ray flux per minute, from NOAA SWPC public data. Not affiliated with NOAA."
 DEFAULT_EVERY = 600         # seconds; NOAA adds a row per band every minute, so each run finds ~10 new minutes
 BATCH = 1                   # one transaction per minute of data
 PUBLIC = False              # hash only, which keeps metadata small (the data is public domain, so True is allowed)
