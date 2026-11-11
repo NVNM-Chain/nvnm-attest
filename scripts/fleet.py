@@ -179,6 +179,8 @@ def show(state):
         elif stem in bots:
             pid, wallet = bots[stem]
             what = f"running, pid {pid}, wallet {wallet}"
+            if not wallet.startswith("fleet-"):
+                what, rid = what + " (started by hand, so not the fleet's registry)", None
         else:
             what = "not running"
         link = f"  {nvnm.EXPLORER}/anchoring/{rid}" if rid is not None else ""
