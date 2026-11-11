@@ -142,7 +142,11 @@ def start(w3, path, state, funder, run):
     if known and known["chain"] == nvnm.CHAIN_ID and known["admin"] == acct.address:
         rid = known["id"]
     else:  # first run, or a new wallets folder or chain: the old registry isn't this wallet's to write to
-        rid, _, _ = nvnm.create_registry(w3, acct, src.NAME, description(src), {"kit": nvnm.KIT_VERSION})
+        guard = nvnm.claim_wallet(w3, wallet, acct.address)  # the bot's own check: no other runner on this wallet
+        try:
+            rid, _, _ = nvnm.create_registry(w3, acct, src.NAME, description(src), {"kit": nvnm.KIT_VERSION})
+        finally:
+            nvnm.release_wallet(guard)
         state["registries"][path.stem] = {"id": rid, "chain": nvnm.CHAIN_ID, "admin": acct.address}
         save_state(state)
         print(f"  new registry {rid}: {nvnm.EXPLORER}/anchoring/{rid}")
