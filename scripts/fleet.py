@@ -94,19 +94,20 @@ def description(src):
     return lines[0] if lines else src.NAME
 
 
-def fund(w3, address, funder, faucet_open):
-    """Give a new wallet nUSD: the faucet first, then the --funder wallet. Returns (funded, faucet_open).
+def fund(w3, address, funder, run):
+    """Give a new wallet nUSD: the faucet first, then the --funder wallet. Returns True once it has some.
 
-    After a faucet refusal the run stops asking it: its limit is 1 request per IP per hour.
+    After a faucet refusal the whole run stops asking it (its limit is 1 request per IP per hour): the refusal
+    goes in `run`, which every source of this run shares, so it holds even if what follows raises.
     """
-    if faucet_open:
+    if run["faucet_open"]:
         try:
             res = nvnm.request_faucet(address)
             print(f"  faucet sent {res.get('amount')} nUSD: {nvnm.tx_link(res['txHash'])}")
-            return nvnm.wait_for_nusd(w3, address, timeout=60) > 0, True
+            return nvnm.wait_for_nusd(w3, address, timeout=60) > 0
         except nvnm.FaucetError as e:
             print(f"  faucet: {e}")
-            faucet_open = False
+            run["faucet_open"] = False
     if funder:
         token, payer = nvnm.nusd(w3), nvnm.load_account(funder)
         guard = nvnm.claim_wallet(w3, funder, payer.address)  # refuses a wallet a running bot is using
@@ -115,12 +116,12 @@ def fund(w3, address, funder, faucet_open):
         finally:
             nvnm.release_wallet(guard)
         print(f"  {funder} sent {FUNDER_AMOUNT} nUSD: {nvnm.tx_link(tx)}")
-        return nvnm.wait_for_nusd(w3, address, timeout=60) > 0, faucet_open
-    return False, faucet_open
+        return nvnm.wait_for_nusd(w3, address, timeout=60) > 0
+    return False
 
 
-def start(w3, path, state, funder, faucet_open):
-    """Wallet, nUSD, registry, bot: each step is skipped when it's already done. Returns faucet_open."""
+def start(w3, path, state, funder, run):
+    """Wallet, nUSD, registry, bot: each step is skipped when it's already done."""
     src = load_source(path)
     wallet = f"fleet-{src.NAME}"
     if not nvnm.wallet_path(wallet).exists():
@@ -128,10 +129,10 @@ def start(w3, path, state, funder, faucet_open):
         print(f"  new wallet {wallet}")
     acct = nvnm.load_account(wallet)
     if nvnm.nusd_balance(w3, acct.address) <= 0:
-        funded, faucet_open = fund(w3, acct.address, funder, faucet_open)
+        funded = fund(w3, acct.address, funder, run)
         if not funded:
             print(f"  {acct.address} has no nUSD yet. The next run tries again.")
-            return faucet_open
+            return
     known = state["registries"].get(path.stem)
     if known and known["chain"] == nvnm.CHAIN_ID and known["admin"] == acct.address:
         rid = known["id"]
@@ -151,7 +152,6 @@ def start(w3, path, state, funder, faucet_open):
             cwd=nvnm.KIT_DIR, env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
             start_new_session=True)  # its own session: it outlives this run and the launchd job
     print(f"  started, pid {proc.pid}, log {log_path}")
-    return faucet_open
 
 
 def pull():
@@ -273,11 +273,11 @@ def main():
     todo = [path for path in source_files() if path.stem not in state["skip"] and path.stem not in bots]
     if todo:
         w3 = nvnm.connect()
-        faucet_open = True
+        run = {"faucet_open": True}
         for path in todo:
             print(f"{path.stem}: no bot running")
             try:
-                faucet_open = start(w3, path, state, a.funder, faucet_open)
+                start(w3, path, state, a.funder, run)
             except (Exception, SystemExit) as e:  # one broken source must not stop the others
                 print(f"  couldn't start it: {e}")
     show(state)
