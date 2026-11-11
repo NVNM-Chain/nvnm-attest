@@ -181,6 +181,24 @@ def show(state):
         print(f"{stem:<28} {what}{link}")
 
 
+def stop(pid):
+    """Ctrl-C first, so the bot releases its wallet on the way out. A bot that inherited an ignored SIGINT (a fleet
+    started as a background job) gets SIGTERM after 10 s. Returns True once the process is gone."""
+    for sig, wait in ((signal.SIGINT, 10), (signal.SIGTERM, 5)):
+        try:
+            os.kill(pid, sig)
+        except ProcessLookupError:
+            return True
+        deadline = time.time() + wait
+        while time.time() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return True
+            time.sleep(0.25)
+    return False
+
+
 def skip(state, name):
     stem = Path(name).stem
     if stem not in state["skip"]:
@@ -188,8 +206,10 @@ def skip(state, name):
         save_state(state)
     pid, wallet = running_bots().get(stem, (None, ""))
     if pid and wallet.startswith("fleet-"):
-        os.kill(pid, signal.SIGINT)  # like Ctrl-C, so the bot releases its wallet on the way out
-        print(f"{stem}: stopped its bot (pid {pid}) and skipped it from now on.")
+        if stop(pid):
+            print(f"{stem}: stopped its bot (pid {pid}) and skipped it from now on.")
+        else:
+            print(f"{stem}: skipped from now on, but its bot (pid {pid}) didn't stop. Stop it with: kill -9 {pid}")
     elif pid:
         print(f"{stem}: skipped from now on. Its bot (pid {pid}, wallet {wallet}) isn't the fleet's, so it keeps running.")
     else:
@@ -237,6 +257,9 @@ def install(funder):
 
 
 def uninstall():
+    if platform.system() != "Darwin":
+        return print("--install only printed a cron line here: remove it with crontab -e. "
+                     "Running bots keep going; stop one with --skip <source>.")
     if PLIST.exists():
         subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}", str(PLIST)], capture_output=True)
         PLIST.unlink()
