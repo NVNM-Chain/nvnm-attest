@@ -30,6 +30,8 @@ import json
 import urllib.request
 
 NAME = "usgs-earthquakes"
+DESCRIPTION = ("Earthquakes worldwide, one record per event revision, from the USGS real-time GeoJSON feed "
+               "(public domain). Not affiliated with USGS.")
 DEFAULT_EVERY = 300         # seconds; the feed updates every minute, about 10 to 20 new events or revisions an hour
 BATCH = 1                   # one transaction per event version
 PUBLIC = False              # hash only: a feature is about 700 bytes, too close to the metadata limit with the kit's fields
