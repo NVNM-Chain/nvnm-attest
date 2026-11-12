@@ -8,7 +8,7 @@ p.add_argument("--registries", action="store_true", help="list the newest regist
 a = p.parse_args()
 
 w3 = nvnm.connect()
-gp = w3.eth.gas_price
+gp = nvnm.gas_price(w3)
 print(f"Network: chain {nvnm.CHAIN_ID}, block {w3.eth.block_number}")
 print(f"Gas price: {gp} attodollars/gas  (~${gp * 5_700_000 / 1e18:.4f} per anchor at ~5.7M gas, estimate only)")
 if a.wallet:
