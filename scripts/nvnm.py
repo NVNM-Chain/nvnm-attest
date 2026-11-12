@@ -242,12 +242,19 @@ def wait_for_nusd(w3, address, above=0.0, timeout=60) -> float:
 
 
 # --- Sending -----------------------------------------------------------------
+def gas_price(w3) -> int:
+    """Current gas price in attodollars. eth_gasPrice on this chain can sit below the block base fee
+    (seen 12 Nov 2026: 0.6B vs 1.26B), and a fee cap under the base fee is rejected, so take the higher."""
+    base = w3.eth.get_block("latest").get("baseFeePerGas", 0)
+    return max(w3.eth.gas_price, base)
+
+
 def send(w3, acct, fn, gas_fallback=8_000_000, wait=True, guard=None):
     """Build, sign and send a contract call. Returns (tx_hash, receipt, fee_usd).
 
     With a guard from claim_wallet(), it refuses to send if another runner has used the wallet since the last send.
     """
-    gas_price = w3.eth.gas_price
+    price_now = gas_price(w3)
     nonce = w3.eth.get_transaction_count(acct.address, "pending")
     if guard is not None and nonce > guard["next_nonce"]:
         raise WalletInUse(f"Another runner sent {nonce - guard['next_nonce']} tx(s) from {acct.address} since this "
@@ -256,7 +263,7 @@ def send(w3, acct, fn, gas_fallback=8_000_000, wait=True, guard=None):
         "from": acct.address,
         "chainId": CHAIN_ID,
         "nonce": nonce,
-        "maxFeePerGas": gas_price * 2,
+        "maxFeePerGas": price_now * 3,  # only the base fee is charged; headroom for 0.6s blocks
         "maxPriorityFeePerGas": 0,
         "gas": gas_fallback,
     })
@@ -279,7 +286,7 @@ def send(w3, acct, fn, gas_fallback=8_000_000, wait=True, guard=None):
         _save_runner(guard, os.getpid())
     if receipt.status != 1:
         raise RuntimeError(f"Transaction reverted: {tx_hash.hex()}")
-    price = receipt.get("effectiveGasPrice", gas_price)
+    price = receipt.get("effectiveGasPrice", price_now)
     fee_usd = math.ceil(price * receipt.gasUsed / 10**12) / 1e6  # attodollars -> microdollars -> USD
     return tx_hash.hex(), receipt, fee_usd
 
