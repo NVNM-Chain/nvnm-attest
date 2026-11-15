@@ -31,7 +31,7 @@ DESCRIPTION = ("Sweden's hourly weather observations, one record per station per
                "(CC BY 4.0). Source: SMHI. Not affiliated with SMHI.")
 DEFAULT_EVERY = 900         # seconds; SMHI publishes hourly and some stations report late in the hour
 BATCH = 1                   # one transaction per station-hour, about 180 an hour
-PUBLIC = True               # open data, and a record is under 800 bytes: the observations go in on-chain metadata
+PUBLIC = False              # hash only: a record is up to 800 bytes, and metadata that size runs out of gas
 SKIP_ANCHORED = True        # each run returns the latest hour again: anchor each version once
 
 PARAMETERS = (1, 3, 4, 6, 7, 9, 21)
