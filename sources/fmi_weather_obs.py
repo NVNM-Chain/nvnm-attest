@@ -61,6 +61,8 @@ def _pos(text):  # "60.30373 25.54916" -> a key that ignores spacing
 
 def parse(body):
     """Turn one WFS response into {key: record}. Used by fetch() and to rebuild a record when verifying."""
+    if b"<!DOCTYPE" in body or b"<!ENTITY" in body:  # FMI never sends a DTD; refusing one blocks entity attacks
+        raise ValueError("unexpected DTD in the WFS response")
     root = ET.fromstring(body)
     points = {p.get(GML_ID): _pos(p.findtext("gml:pos", "", NS)) for p in root.iter(f"{{{NS['gml']}}}Point")}
     stations, seen = {}, set()
