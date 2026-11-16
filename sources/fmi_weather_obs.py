@@ -43,7 +43,8 @@ WFS = "https://opendata.fmi.fi/wfs"
 HOURS = 3
 
 NS = {"gml": "http://www.opengis.net/gml/3.2", "target": "http://xml.fmi.fi/namespace/om/atmosphericfeatures/1.1",
-      "gmlcov": "http://www.opengis.net/gmlcov/1.0", "xlink": "http://www.w3.org/1999/xlink"}
+      "gmlcov": "http://www.opengis.net/gmlcov/1.0", "xlink": "http://www.w3.org/1999/xlink",
+      "swe": "http://www.opengis.net/swe/2.0"}
 GML_ID = "{http://www.opengis.net/gml/3.2}id"
 
 
@@ -79,15 +80,22 @@ def parse(body):
         stations[pos] = {"fmisid": loc.findtext("gml:identifier", "", NS), "name": names.get("name"),
                          "region": loc.findtext("target:region", None, NS),
                          "latitude": float(pos[0]), "longitude": float(pos[1])}
-    positions = (root.findtext(".//gmlcov:positions", "", NS)).split()
-    values = [row.split() for row in root.findtext(".//gml:doubleOrNilReasonTupleList", "", NS).strip().split("\n")]
+    fields = [f.get("name") for f in root.iter(f"{{{NS['swe']}}}field")]  # the column order FMI declares
+    if sorted(fields) != sorted(PARAMETERS):
+        raise ValueError(f"unexpected WFS fields {fields}")
+    positions = root.findtext(".//gmlcov:positions", "", NS).split()  # lat, lon, epoch per row
+    tokens = root.findtext(".//gml:doubleOrNilReasonTupleList", "", NS).split()  # whitespace-separated values
+    rows = len(positions) // 3
+    if len(positions) % 3 or len(tokens) != rows * len(fields):
+        raise ValueError("WFS positions and values don't line up")
     records = {}
-    for i, row in enumerate(values):
+    for i in range(rows):
         lat, lon, epoch = positions[3 * i: 3 * i + 3]
         station = stations.get((lat, lon))
-        if station is None or len(row) != len(PARAMETERS):
+        if station is None:
             continue
-        obs = {p: (None if v == "NaN" else v) for p, v in zip(PARAMETERS, row)}
+        row = tokens[i * len(fields): (i + 1) * len(fields)]
+        obs = {name: (None if v == "NaN" else v) for name, v in zip(fields, row)}
         if all(v is None for v in obs.values()):
             continue  # no reading at all for this hour
         when = datetime.fromtimestamp(int(epoch), timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
